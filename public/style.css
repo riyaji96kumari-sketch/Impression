@@ -122,3 +122,20 @@ button:disabled {
     white-space: pre-wrap;
     word-wrap: break-word;
 }
+
+small {
+    display: block;
+    margin-top: 5px;
+    color: #7f8c8d;
+    font-size: 0.8rem;
+}
+
+#iframeContainer {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    visibility: hidden;
+}

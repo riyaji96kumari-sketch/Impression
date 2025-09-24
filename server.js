@@ -3,7 +3,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const axios = require('axios');
 const path = require('path');
 
 const app = express();
@@ -11,9 +10,8 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // --- State Management ---
-let requestTimeout = null;
+let simulationTimeout = null;
 let isRunning = false;
-let requestCount = 0;
 
 // Serve static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -25,54 +23,46 @@ function getRandomDelay(min, max) {
 
 const getTimestamp = () => new Date().toLocaleTimeString();
 
-// --- Core Traffic Simulation Logic ---
-const startTraffic = (socket, { url, minDelay, maxDelay }) => {
+// --- Core Simulation Logic (Orchestrator) ---
+const startTraffic = ({ url, minDelay, maxDelay, iframeCount, closeDelay }) => {
   if (isRunning) {
-    stopTraffic(); // Stop any existing simulation before starting a new one
+    stopTraffic();
   }
 
   // Validate inputs
-  if (!url || minDelay < 0 || maxDelay < minDelay) {
+  if (!url || minDelay < 0 || maxDelay < minDelay || iframeCount <= 0 || closeDelay <= 0) {
     io.emit('log', `[${getTimestamp()}] ERROR - Invalid parameters provided.`);
     return;
   }
   
   isRunning = true;
-  requestCount = 0;
   io.emit('statusUpdate', { isRunning: true });
-  io.emit('log', `[${getTimestamp()}] INFO - Traffic simulation started for ${url}`);
+  io.emit('log', `[${getTimestamp()}] INFO - Simulation started. Instructing client to open ${iframeCount} window(s) for ${url}`);
 
-  const sendRequest = async () => {
-    try {
-      const response = await axios.get(url, { timeout: 5000 }); // 5 second timeout
-      requestCount++;
-      io.emit('log', `[${getTimestamp()}] [${requestCount}] SUCCESS ${response.status} - ${url}`);
-    } catch (error) {
-      requestCount++;
-      let status = error.response ? error.response.status : 'N/A';
-      let message = error.code || error.message;
-      io.emit('log', `[${getTimestamp()}] [${requestCount}] ERROR ${status} - ${message}`);
-    }
+  const scheduleNextBatch = () => {
+    // Tell all connected clients to create the iframes
+    io.emit('create-iframes', { url, count: iframeCount, closeDelay });
+    io.emit('log', `[${getTimestamp()}] INFO - Sent command to create ${iframeCount} iframe(s).`);
 
-    // If still running, schedule the next request
+    // If still running, schedule the next batch
     if (isRunning) {
       const delay = getRandomDelay(minDelay, maxDelay);
-      requestTimeout = setTimeout(sendRequest, delay);
+      simulationTimeout = setTimeout(scheduleNextBatch, delay);
     }
   };
 
-  sendRequest(); // Start the first request immediately
+  scheduleNextBatch(); // Start the first batch
 };
 
 const stopTraffic = () => {
-  if (requestTimeout) {
-    clearTimeout(requestTimeout);
-    requestTimeout = null;
+  if (simulationTimeout) {
+    clearTimeout(simulationTimeout);
+    simulationTimeout = null;
   }
   if (isRunning) {
     isRunning = false;
     io.emit('statusUpdate', { isRunning: false });
-    io.emit('log', `[${getTimestamp()}] INFO - Traffic simulation stopped.`);
+    io.emit('log', `[${getTimestamp()}] INFO - Simulation stopped.`);
   }
 };
 
@@ -81,15 +71,16 @@ const stopTraffic = () => {
 io.on('connection', (socket) => {
   console.log('A user connected');
   
-  // Send current status to the newly connected client
   socket.emit('statusUpdate', { isRunning });
 
   socket.on('start-traffic', (data) => {
     console.log('Received start-traffic signal with data:', data);
-    startTraffic(socket, {
+    startTraffic({
       url: data.url,
       minDelay: parseInt(data.minDelay, 10),
       maxDelay: parseInt(data.maxDelay, 10),
+      iframeCount: parseInt(data.iframeCount, 10),
+      closeDelay: parseInt(data.closeDelay, 10),
     });
   });
 
@@ -97,19 +88,20 @@ io.on('connection', (socket) => {
     console.log('Received stop-traffic signal');
     stopTraffic();
   });
+  
+  // Listen for logs from the client
+  socket.on('client-log', (message) => {
+    // Broadcast the client's log to all clients
+    io.emit('log', `[${getTimestamp()}] CLIENT - ${message}`);
+  });
 
   socket.on('disconnect', () => {
     console.log('User disconnected');
-    // Optional: you could decide to stop the traffic if all users disconnect
-    // if (io.engine.clientsCount === 0) {
-    //   stopTraffic();
-    // }
   });
 });
 
 
 // --- Server Initialization ---
-// IMPORTANT for deployment on services like Render
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

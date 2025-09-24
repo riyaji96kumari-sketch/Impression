@@ -3,15 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server-Side Traffic Simulator</title>
+    <title>Hybrid Traffic Simulator</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Server-Side Traffic Simulator</h1>
-        <p>Control a background process that sends GET requests to a target URL.</p>
+        <h1>Hybrid Traffic Simulator</h1>
         
         <form id="controlForm">
+            <!-- NEW: Mode Selector -->
+            <div class="form-group">
+                <label>Simulation Mode</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="mode" value="server" checked> Server Mode (Background Task)</label>
+                    <label><input type="radio" name="mode" value="browser"> Browser Mode (Visible iFrames)</label>
+                </div>
+                <small id="modeDescription">Runs on the server using GET requests. Persists even if you close this tab.</small>
+            </div>
+
             <div class="form-group">
                 <label for="url">Target URL</label>
                 <input type="url" id="url" placeholder="https://example.com" value="https://httpbin.org/get" required>
@@ -19,12 +28,24 @@
             
             <div class="form-group-inline">
                 <div class="form-group">
-                    <label for="minDelay">Min Delay (ms)</label>
-                    <input type="number" id="minDelay" value="500" min="0" required>
+                    <label for="minDelay">Min Interval (ms)</label>
+                    <input type="number" id="minDelay" value="5000" min="0" required>
                 </div>
                 <div class="form-group">
-                    <label for="maxDelay">Max Delay (ms)</label>
-                    <input type="number" id="maxDelay" value="2000" min="0" required>
+                    <label for="maxDelay">Max Interval (ms)</label>
+                    <input type="number" id="maxDelay" value="10000" min="0" required>
+                </div>
+            </div>
+            
+            <!-- Browser-mode specific inputs -->
+            <div id="browserSpecificInputs" class="form-group-inline" style="display: none;">
+                <div class="form-group">
+                    <label for="iframeCount">Windows per Interval</label>
+                    <input type="number" id="iframeCount" value="3" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="closeDelay">Close After (ms)</label>
+                    <input type="number" id="closeDelay" value="4000" min="100">
                 </div>
             </div>
 
@@ -36,10 +57,13 @@
 
         <h2>Logs</h2>
         <div class="log-container-wrapper">
-            <pre id="logContainer">Connecting to server...</pre>
+            <pre id="logContainer">Awaiting instructions...</pre>
         </div>
-    </div>
 
+        <h2>Active Windows (Browser Mode Only)</h2>
+        <div id="iframeGridContainer"></div>
+    </div>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>

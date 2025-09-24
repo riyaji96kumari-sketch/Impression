@@ -10,14 +10,18 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Middleware to parse JSON bodies for API requests
-app.use(express.json());
+// --- Middleware for API ---
+app.use(express.json()); // To parse JSON bodies from API requests
 
-// --- Global State Management ---
-let simulationTimeout = null;
-let isRunning = false;
-let currentConfig = {};
-let requestCount = 0;
+// --- State Management for Background Task ---
+let backgroundTask = {
+  isRunning: false,
+  url: '',
+  minDelay: 0,
+  maxDelay: 0,
+  requestCount: 0,
+  timeout: null,
+};
 
 // Serve static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -26,133 +30,128 @@ app.use(express.static(path.join(__dirname, 'public')));
 const getRandomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
 const getTimestamp = () => new Date().toLocaleTimeString();
 
-// --- Core Simulation Logic (Server-Side) ---
-const startTraffic = (config) => {
-  if (isRunning) {
-    stopTraffic(); // Stop any existing simulation before starting a new one
+// --- Core Background Task Logic (Server-Side) ---
+const startBackgroundTask = ({ url, minDelay, maxDelay }) => {
+  if (backgroundTask.isRunning) {
+    stopBackgroundTask(); // Stop previous task
   }
-
-  const { url, minDelay, maxDelay } = config;
-
-  // Validate inputs
-  if (!url || !minDelay || !maxDelay || minDelay < 0 || maxDelay < minDelay) {
-    const errorMsg = `[${getTimestamp()}] ERROR - Invalid parameters provided.`;
+  
+  if (!url || minDelay < 0 || maxDelay < minDelay) {
+    const errorMsg = `[${getTimestamp()}] SERVER ERROR - Invalid parameters for background task.`;
     console.error(errorMsg);
-    io.emit('log', errorMsg); // Also log to web UI if anyone is watching
-    return false;
+    io.emit('log', errorMsg);
+    return { success: false, message: "Invalid parameters." };
   }
 
-  isRunning = true;
-  currentConfig = config;
-  requestCount = 0;
-
-  // Notify all connected web clients of the new status
-  io.emit('statusUpdate', { isRunning: true, config: currentConfig });
-  io.emit('log', `[${getTimestamp()}] INFO - Traffic simulation started for ${url}`);
-  console.log(`Traffic simulation started for ${url}`);
+  backgroundTask = { ...backgroundTask, isRunning: true, url, minDelay, maxDelay, requestCount: 0 };
+  
+  const successMsg = `[${getTimestamp()}] SERVER - Background task started for ${url}`;
+  console.log(successMsg);
+  io.emit('log', successMsg);
+  io.emit('statusUpdate', { isRunning: true });
 
   const sendRequest = async () => {
     try {
-      const response = await axios.get(url, { timeout: 8000 });
-      requestCount++;
-      const logMsg = `[${getTimestamp()}] [${requestCount}] SUCCESS ${response.status} - ${url}`;
-      io.emit('log', logMsg);
+      const response = await axios.get(url, { timeout: 5000 });
+      backgroundTask.requestCount++;
+      io.emit('log', `[${getTimestamp()}] [BG #${backgroundTask.requestCount}] SUCCESS ${response.status} - ${url}`);
     } catch (error) {
-      requestCount++;
-      const status = error.response ? error.response.status : 'N/A';
-      const message = error.code || error.message;
-      const logMsg = `[${getTimestamp()}] [${requestCount}] ERROR ${status} - ${message}`;
-      io.emit('log', logMsg);
+      backgroundTask.requestCount++;
+      let status = error.response ? error.response.status : 'N/A';
+      io.emit('log', `[${getTimestamp()}] [BG #${backgroundTask.requestCount}] ERROR ${status} - ${error.message}`);
     }
 
-    if (isRunning) {
-      const delay = getRandomDelay(minDelay, maxDelay);
-      simulationTimeout = setTimeout(sendRequest, delay);
+    if (backgroundTask.isRunning) {
+      const delay = getRandomDelay(backgroundTask.minDelay, backgroundTask.maxDelay);
+      backgroundTask.timeout = setTimeout(sendRequest, delay);
     }
   };
 
-  sendRequest(); // Start the first request immediately
-  return true;
+  sendRequest();
+  return { success: true, message: "Background task started successfully." };
 };
 
-const stopTraffic = () => {
-  if (simulationTimeout) {
-    clearTimeout(simulationTimeout);
-    simulationTimeout = null;
+const stopBackgroundTask = () => {
+  if (backgroundTask.timeout) {
+    clearTimeout(backgroundTask.timeout);
   }
-  if (isRunning) {
-    isRunning = false;
-    const logMsg = `[${getTimestamp()}] INFO - Traffic simulation stopped.`;
-    io.emit('log', logMsg);
-    io.emit('statusUpdate', { isRunning: false, config: {} });
-    console.log(logMsg);
-    currentConfig = {};
+  if (backgroundTask.isRunning) {
+    backgroundTask.isRunning = false;
+    const infoMsg = `[${getTimestamp()}] SERVER - Background task stopped.`;
+    console.log(infoMsg);
+    io.emit('log', infoMsg);
+    io.emit('statusUpdate', { isRunning: false });
   }
+  return { success: true, message: "Background task stopped." };
 };
 
-
-// --- REST API Endpoints ---
+// --- API Endpoints ---
 app.post('/api/start', (req, res) => {
-  console.log('API /start endpoint hit with body:', req.body);
   const { url, minDelay, maxDelay } = req.body;
-  
-  const success = startTraffic({
-    url,
-    minDelay: parseInt(minDelay, 10),
-    maxDelay: parseInt(maxDelay, 10),
-  });
-
-  if (success) {
-    res.status(200).json({ success: true, message: 'Traffic simulation started successfully.' });
+  const result = startBackgroundTask({ url, minDelay, maxDelay });
+  if (result.success) {
+    res.status(200).json(result);
   } else {
-    res.status(400).json({ success: false, message: 'Invalid parameters provided.' });
+    res.status(400).json(result);
   }
 });
 
 app.post('/api/stop', (req, res) => {
-  console.log('API /stop endpoint hit');
-  stopTraffic();
-  res.status(200).json({ success: true, message: 'Traffic simulation stopped.' });
+  const result = stopBackgroundTask();
+  res.status(200).json(result);
 });
 
 app.get('/api/status', (req, res) => {
   res.status(200).json({
-    isRunning,
-    requestsSent: requestCount,
-    currentConfig: isRunning ? currentConfig : null,
+    isRunning: backgroundTask.isRunning,
+    url: backgroundTask.url,
+    minDelay: backgroundTask.minDelay,
+    maxDelay: backgroundTask.maxDelay,
+    requestsSent: backgroundTask.requestCount,
   });
 });
 
 
-// --- WebSocket Connection Handling for Web UI ---
+// --- WebSocket Connection Handling ---
 io.on('connection', (socket) => {
-  console.log('A user connected to the Web UI');
+  console.log('A user connected');
   
-  // Send current status to the newly connected client
-  socket.emit('statusUpdate', { isRunning, config: currentConfig });
+  // Immediately send the status of the background task to the new client
+  socket.emit('statusUpdate', { isRunning: backgroundTask.isRunning });
 
   socket.on('start-traffic', (data) => {
-    console.log('Web UI sent start-traffic with data:', data);
-    startTraffic({
-      url: data.url,
-      minDelay: parseInt(data.minDelay, 10),
-      maxDelay: parseInt(data.maxDelay, 10),
-    });
+    console.log('Received start-traffic signal with data:', data);
+
+    if (data.mode === 'server') {
+      // Start the persistent background task
+      startBackgroundTask({
+        url: data.url,
+        minDelay: parseInt(data.minDelay, 10),
+        maxDelay: parseInt(data.maxDelay, 10),
+      });
+    } else if (data.mode === 'browser') {
+      // Orchestrate the temporary iframe task
+      // Note: This does not use the persistent backgroundTask state
+      io.emit('log', `[${getTimestamp()}] BROWSER - Instructing client to start iframe simulation.`);
+      io.emit('start-iframe-task', data);
+    }
   });
 
   socket.on('stop-traffic', () => {
-    console.log('Web UI sent stop-traffic');
-    stopTraffic();
+    console.log('Received stop-traffic signal');
+    // This button should stop BOTH kinds of tasks for simplicity
+    stopBackgroundTask();
+    io.emit('stop-iframe-task');
+  });
+  
+  socket.on('client-log', (message) => {
+    io.emit('log', `[${getTimestamp()}] CLIENT - ${message}`);
   });
 
-  socket.on('disconnect', () => {
-    console.log('Web UI user disconnected');
-  });
+  socket.on('disconnect', () => console.log('User disconnected'));
 });
 
 
 // --- Server Initialization ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server is running on http://localhost:${PORT}`));

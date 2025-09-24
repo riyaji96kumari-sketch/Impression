@@ -3,55 +3,76 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const axios = require('axios');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// --- State Management ---
+// Middleware to parse JSON bodies for API requests
+app.use(express.json());
+
+// --- Global State Management ---
 let simulationTimeout = null;
 let isRunning = false;
+let currentConfig = {};
+let requestCount = 0;
 
 // Serve static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Helper Functions ---
-function getRandomDelay(min, max) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
+const getRandomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
 const getTimestamp = () => new Date().toLocaleTimeString();
 
-// --- Core Simulation Logic (Orchestrator) ---
-const startTraffic = ({ url, minDelay, maxDelay, iframeCount, closeDelay }) => {
+// --- Core Simulation Logic (Server-Side) ---
+const startTraffic = (config) => {
   if (isRunning) {
-    stopTraffic();
+    stopTraffic(); // Stop any existing simulation before starting a new one
   }
+
+  const { url, minDelay, maxDelay } = config;
 
   // Validate inputs
-  if (!url || minDelay < 0 || maxDelay < minDelay || iframeCount <= 0 || closeDelay <= 0) {
-    io.emit('log', `[${getTimestamp()}] ERROR - Invalid parameters provided.`);
-    return;
+  if (!url || !minDelay || !maxDelay || minDelay < 0 || maxDelay < minDelay) {
+    const errorMsg = `[${getTimestamp()}] ERROR - Invalid parameters provided.`;
+    console.error(errorMsg);
+    io.emit('log', errorMsg); // Also log to web UI if anyone is watching
+    return false;
   }
-  
+
   isRunning = true;
-  io.emit('statusUpdate', { isRunning: true });
-  io.emit('log', `[${getTimestamp()}] INFO - Simulation started. Instructing client to open ${iframeCount} window(s) for ${url}`);
+  currentConfig = config;
+  requestCount = 0;
 
-  const scheduleNextBatch = () => {
-    // Tell all connected clients to create the iframes
-    io.emit('create-iframes', { url, count: iframeCount, closeDelay });
-    io.emit('log', `[${getTimestamp()}] INFO - Sent command to create ${iframeCount} iframe(s).`);
+  // Notify all connected web clients of the new status
+  io.emit('statusUpdate', { isRunning: true, config: currentConfig });
+  io.emit('log', `[${getTimestamp()}] INFO - Traffic simulation started for ${url}`);
+  console.log(`Traffic simulation started for ${url}`);
 
-    // If still running, schedule the next batch
+  const sendRequest = async () => {
+    try {
+      const response = await axios.get(url, { timeout: 8000 });
+      requestCount++;
+      const logMsg = `[${getTimestamp()}] [${requestCount}] SUCCESS ${response.status} - ${url}`;
+      io.emit('log', logMsg);
+    } catch (error) {
+      requestCount++;
+      const status = error.response ? error.response.status : 'N/A';
+      const message = error.code || error.message;
+      const logMsg = `[${getTimestamp()}] [${requestCount}] ERROR ${status} - ${message}`;
+      io.emit('log', logMsg);
+    }
+
     if (isRunning) {
       const delay = getRandomDelay(minDelay, maxDelay);
-      simulationTimeout = setTimeout(scheduleNextBatch, delay);
+      simulationTimeout = setTimeout(sendRequest, delay);
     }
   };
 
-  scheduleNextBatch(); // Start the first batch
+  sendRequest(); // Start the first request immediately
+  return true;
 };
 
 const stopTraffic = () => {
@@ -61,42 +82,71 @@ const stopTraffic = () => {
   }
   if (isRunning) {
     isRunning = false;
-    io.emit('statusUpdate', { isRunning: false });
-    io.emit('log', `[${getTimestamp()}] INFO - Simulation stopped.`);
+    const logMsg = `[${getTimestamp()}] INFO - Traffic simulation stopped.`;
+    io.emit('log', logMsg);
+    io.emit('statusUpdate', { isRunning: false, config: {} });
+    console.log(logMsg);
+    currentConfig = {};
   }
 };
 
 
-// --- WebSocket Connection Handling ---
-io.on('connection', (socket) => {
-  console.log('A user connected');
+// --- REST API Endpoints ---
+app.post('/api/start', (req, res) => {
+  console.log('API /start endpoint hit with body:', req.body);
+  const { url, minDelay, maxDelay } = req.body;
   
-  socket.emit('statusUpdate', { isRunning });
+  const success = startTraffic({
+    url,
+    minDelay: parseInt(minDelay, 10),
+    maxDelay: parseInt(maxDelay, 10),
+  });
+
+  if (success) {
+    res.status(200).json({ success: true, message: 'Traffic simulation started successfully.' });
+  } else {
+    res.status(400).json({ success: false, message: 'Invalid parameters provided.' });
+  }
+});
+
+app.post('/api/stop', (req, res) => {
+  console.log('API /stop endpoint hit');
+  stopTraffic();
+  res.status(200).json({ success: true, message: 'Traffic simulation stopped.' });
+});
+
+app.get('/api/status', (req, res) => {
+  res.status(200).json({
+    isRunning,
+    requestsSent: requestCount,
+    currentConfig: isRunning ? currentConfig : null,
+  });
+});
+
+
+// --- WebSocket Connection Handling for Web UI ---
+io.on('connection', (socket) => {
+  console.log('A user connected to the Web UI');
+  
+  // Send current status to the newly connected client
+  socket.emit('statusUpdate', { isRunning, config: currentConfig });
 
   socket.on('start-traffic', (data) => {
-    console.log('Received start-traffic signal with data:', data);
+    console.log('Web UI sent start-traffic with data:', data);
     startTraffic({
       url: data.url,
       minDelay: parseInt(data.minDelay, 10),
       maxDelay: parseInt(data.maxDelay, 10),
-      iframeCount: parseInt(data.iframeCount, 10),
-      closeDelay: parseInt(data.closeDelay, 10),
     });
   });
 
   socket.on('stop-traffic', () => {
-    console.log('Received stop-traffic signal');
+    console.log('Web UI sent stop-traffic');
     stopTraffic();
-  });
-  
-  // Listen for logs from the client
-  socket.on('client-log', (message) => {
-    // Broadcast the client's log to all clients
-    io.emit('log', `[${getTimestamp()}] CLIENT - ${message}`);
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    console.log('Web UI user disconnected');
   });
 });
 

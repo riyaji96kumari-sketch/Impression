@@ -3,41 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iFrame Traffic Simulator</title>
+    <title>Server-Side Traffic Simulator</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>iFrame Traffic Simulator</h1>
-        <p>Generates traffic by creating and destroying **visible** iframes in your browser.</p>
+        <h1>Server-Side Traffic Simulator</h1>
+        <p>Control a background process that sends GET requests to a target URL.</p>
         
-        <!-- The form remains the same as before -->
         <form id="controlForm">
             <div class="form-group">
                 <label for="url">Target URL</label>
                 <input type="url" id="url" placeholder="https://example.com" value="https://httpbin.org/get" required>
-                <small>Note: Site must not block iframing (i.e., no X-Frame-Options header).</small>
             </div>
             
             <div class="form-group-inline">
                 <div class="form-group">
-                    <label for="minDelay">Min Interval (ms)</label>
-                    <input type="number" id="minDelay" value="5000" min="0" required>
+                    <label for="minDelay">Min Delay (ms)</label>
+                    <input type="number" id="minDelay" value="500" min="0" required>
                 </div>
                 <div class="form-group">
-                    <label for="maxDelay">Max Interval (ms)</label>
-                    <input type="number" id="maxDelay" value="10000" min="0" required>
-                </div>
-            </div>
-            
-            <div class="form-group-inline">
-                <div class="form-group">
-                    <label for="iframeCount">Windows per Interval</label>
-                    <input type="number" id="iframeCount" value="3" min="1" required>
-                </div>
-                <div class="form-group">
-                    <label for="closeDelay">Close After (ms)</label>
-                    <input type="number" id="closeDelay" value="4000" min="100" required>
+                    <label for="maxDelay">Max Delay (ms)</label>
+                    <input type="number" id="maxDelay" value="2000" min="0" required>
                 </div>
             </div>
 
@@ -49,16 +36,10 @@
 
         <h2>Logs</h2>
         <div class="log-container-wrapper">
-            <pre id="logContainer">Awaiting instructions...</pre>
-        </div>
-
-        <!-- NEW: A visible container for the iframes -->
-        <h2>Active Windows</h2>
-        <div id="iframeGridContainer">
-            <!-- iFrames will be dynamically added here -->
+            <pre id="logContainer">Connecting to server...</pre>
         </div>
     </div>
-    
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>

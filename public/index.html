@@ -9,8 +9,9 @@
 <body>
     <div class="container">
         <h1>iFrame Traffic Simulator</h1>
-        <p>Generates traffic by creating and destroying hidden iframes in your browser.</p>
+        <p>Generates traffic by creating and destroying **visible** iframes in your browser.</p>
         
+        <!-- The form remains the same as before -->
         <form id="controlForm">
             <div class="form-group">
                 <label for="url">Target URL</label>
@@ -50,11 +51,14 @@
         <div class="log-container-wrapper">
             <pre id="logContainer">Awaiting instructions...</pre>
         </div>
+
+        <!-- NEW: A visible container for the iframes -->
+        <h2>Active Windows</h2>
+        <div id="iframeGridContainer">
+            <!-- iFrames will be dynamically added here -->
+        </div>
     </div>
     
-    <!-- Hidden container for iframes -->
-    <div id="iframeContainer"></div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>

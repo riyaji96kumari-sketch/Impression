@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
-    // DOM Elements
+    // DOM Elements (update iframeContainer selector)
     const form = document.getElementById('controlForm');
     const urlInput = document.getElementById('url');
     const minDelayInput = document.getElementById('minDelay');
@@ -11,7 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const logContainer = document.getElementById('logContainer');
-    const iframeContainer = document.getElementById('iframeContainer');
+    // ** UPDATE: Target the new visible grid container **
+    const iframeGridContainer = document.getElementById('iframeGridContainer'); 
     
     let iframeCounter = 0;
 
@@ -19,7 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         
-        logContainer.textContent = ''; // Clear logs on new start
+        logContainer.textContent = ''; // Clear logs
+        iframeGridContainer.innerHTML = ''; // Clear any old iframes
         socket.emit('start-traffic', {
             url: urlInput.value,
             minDelay: minDelayInput.value,
@@ -40,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('statusUpdate', ({ isRunning }) => {
+        // ... (this logic remains the same)
         const inputs = [urlInput, minDelayInput, maxDelayInput, iframeCountInput, closeDelayInput];
         if (isRunning) {
             startBtn.disabled = true;
@@ -57,18 +60,24 @@ document.addEventListener('DOMContentLoaded', () => {
             iframeCounter++;
             const frameId = `traffic-frame-${iframeCounter}`;
             
-            // Log to the server that we are creating an iframe
-            socket.emit('client-log', `Creating iframe #${iframeCounter}...`);
+            socket.emit('client-log', `Creating visible iframe #${iframeCounter}...`);
             
             const iframe = document.createElement('iframe');
             iframe.id = frameId;
             iframe.src = url;
-            // Sandbox attribute for better security, though it may restrict some sites
-            iframe.sandbox = "allow-scripts allow-same-origin";
             
-            iframeContainer.appendChild(iframe);
+            // ** NEW: Add attributes to improve impression counting **
 
-            // Set a timer to remove the iframe
+            // 1. Referrer Policy: Sends the origin URL as the referrer. Makes traffic look more natural.
+            iframe.referrerpolicy = "origin";
+
+            // 2. Permissive Sandbox: Allows scripts, forms, popups, etc., which are often
+            // needed for analytics to function correctly. WARNING: This reduces security.
+            // Only use this tool with URLs you trust.
+            iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups allow-presentation";
+            
+            iframeGridContainer.appendChild(iframe);
+
             setTimeout(() => {
                 const frameToRemove = document.getElementById(frameId);
                 if (frameToRemove) {

@@ -130,12 +130,25 @@ small {
     font-size: 0.8rem;
 }
 
-#iframeContainer {
-    position: absolute;
-    top: -9999px;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    visibility: hidden;
+/* ADD THESE NEW STYLES FOR THE VISIBLE GRID */
+#iframeGridContainer {
+    margin-top: 1.5rem;
+    display: grid;
+    /* Create responsive columns: 3 columns on larger screens, 2 on medium, 1 on small */
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-height: 150px; /* Give it some height even when empty */
+    background-color: #f4f7f9;
+}
+
+#iframeGridContainer iframe {
+    width: 100%;
+    height: 200px; /* Fixed height for each iframe */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    background-color: #fff; /* White background while loading */
 }

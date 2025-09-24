@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
-    // --- DOM Elements ---
+    // DOM Elements
     const form = document.getElementById('controlForm');
     const urlInput = document.getElementById('url');
     const minDelayInput = document.getElementById('minDelay');
@@ -15,13 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeRadios = document.querySelectorAll('input[name="mode"]');
     const browserSpecificInputs = document.getElementById('browserSpecificInputs');
     const modeDescription = document.getElementById('modeDescription');
-    const enableClicksCheckbox = document.getElementById('enableClicks');
-    const clickOptions = document.getElementById('clickOptions');
-    const clickUrlInput = document.getElementById('clickUrl');
-    const ctrInput = document.getElementById('ctr');
-    const clickSimInputs = document.getElementById('clickSimulationInputs');
-
-    // --- State Variables ---
+    
     let iframeCounter = 0;
     let iframeTaskInterval = null;
 
@@ -30,42 +24,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedMode = document.querySelector('input[name="mode"]:checked').value;
         if (selectedMode === 'browser') {
             browserSpecificInputs.style.display = 'flex';
-            clickSimInputs.style.display = 'block'; // Show click options
             modeDescription.textContent = 'Runs in your browser using visible iframes. Stops when you close this tab.';
         } else {
             browserSpecificInputs.style.display = 'none';
-            clickSimInputs.style.display = 'none'; // Hide click options
             modeDescription.textContent = 'Runs on the server using GET requests. Persists even if you close this tab.';
         }
     };
 
     modeRadios.forEach(radio => radio.addEventListener('change', updateModeUI));
-    enableClicksCheckbox.addEventListener('change', () => {
-        clickOptions.classList.toggle('hidden', !enableClicksCheckbox.checked);
-    });
-    updateModeUI(); // Initial call to set the correct UI state
+    updateModeUI(); // Initial call
 
     // --- Event Listeners ---
     form.addEventListener('submit', (e) => {
         e.preventDefault();
-
-        // Clear UI for new simulation
+        
         logContainer.textContent = '';
         iframeGridContainer.innerHTML = '';
-
+        
         const selectedMode = document.querySelector('input[name="mode"]:checked').value;
 
-        // Send all data to the server
         socket.emit('start-traffic', {
             mode: selectedMode,
             url: urlInput.value,
             minDelay: minDelayInput.value,
             maxDelay: maxDelayInput.value,
             iframeCount: iframeCountInput.value,
-            closeDelay: closeDelayInput.value,
-            clicksEnabled: enableClicksCheckbox.checked,
-            clickUrl: clickUrlInput.value,
-            ctr: parseFloat(ctrInput.value)
+            closeDelay: closeDelayInput.value
         });
     });
 
@@ -73,74 +57,49 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('stop-traffic');
     });
 
-    // --- Socket Event Handlers (Receiving from Server) ---
+    // --- Socket Event Handlers ---
     socket.on('log', (message) => {
         logContainer.textContent += message + '\n';
-        // Auto-scroll to the bottom
         logContainer.parentElement.scrollTop = logContainer.parentElement.scrollHeight;
     });
 
     socket.on('statusUpdate', ({ isRunning }) => {
-        const allInputs = [
-            urlInput, minDelayInput, maxDelayInput, iframeCountInput, closeDelayInput,
-            enableClicksCheckbox, clickUrlInput, ctrInput, ...modeRadios
-        ];
+        const inputs = [urlInput, minDelayInput, maxDelayInput, iframeCountInput, closeDelayInput, ...modeRadios];
         startBtn.disabled = isRunning;
         stopBtn.disabled = !isRunning;
-        allInputs.forEach(input => input.disabled = isRunning);
+        inputs.forEach(input => input.disabled = isRunning);
     });
-
+    
     // --- Browser (iFrame) Task Management ---
-    const createIframes = ({ url, count, closeDelay, clicksEnabled, clickUrl, ctr }) => {
+    const createIframes = ({ url, count, closeDelay }) => {
         for (let i = 0; i < count; i++) {
             iframeCounter++;
             const frameId = `traffic-frame-${iframeCounter}`;
-            socket.emit('client-log', `IMPRESSION #${iframeCounter} on ${url}`);
-
+            socket.emit('client-log', `Creating iframe #${iframeCounter}...`);
             const iframe = document.createElement('iframe');
             iframe.id = frameId;
             iframe.src = url;
             iframe.referrerpolicy = "origin";
             iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups allow-presentation";
             iframeGridContainer.appendChild(iframe);
-
-            // ** CLICK LOGIC **
-            if (clicksEnabled && (Math.random() * 100 < ctr)) {
-                // It's a click! Schedule the navigation.
-                const clickDelay = 2000 + Math.random() * 3000; // Wait 2-5 seconds to simulate user reading
-
-                setTimeout(() => {
-                    const frameToClick = document.getElementById(frameId);
-                    if (frameToClick) {
-                        socket.emit('client-log', `CLICK #${(frameId.split('-')[2])} -> Navigating to ${clickUrl}`);
-                        frameToClick.src = clickUrl; // The "click" is a navigation event
-                    }
-                }, clickDelay);
-            }
-
-            // Schedule the iframe to be removed after the total delay
             setTimeout(() => {
                 const frameToRemove = document.getElementById(frameId);
-                if (frameToRemove) {
-                    frameToRemove.remove();
-                }
+                if (frameToRemove) frameToRemove.remove();
             }, closeDelay);
         }
     };
-
+    
     socket.on('start-iframe-task', (data) => {
-        // Since the server doesn't keep state for this mode, the client must run the loop
-        iframeGridContainer.innerHTML = ''; // Clear previous iframes
-        if (iframeTaskInterval) clearTimeout(iframeTaskInterval); // Clear any old interval
-
+        // Since the server doesn't keep state for this, the client must run the loop
+        iframeGridContainer.innerHTML = ''; // Clear previous
         const run = () => {
             createIframes(data);
-            const delay = Math.floor(Math.random() * (parseInt(data.maxDelay, 10) - parseInt(data.minDelay, 10) + 1) + parseInt(data.minDelay, 10));
+            const delay = Math.floor(Math.random() * (data.maxDelay - data.minDelay + 1) + data.minDelay);
             iframeTaskInterval = setTimeout(run, delay);
         };
-
-        run(); // Start the first run immediately
-        socket.emit('statusUpdate', { isRunning: true }); // Use generic event for UI consistency
+        run();
+        // Also update UI to reflect a running state
+        socket.emit('statusUpdate', { isRunning: true });
     });
 
     socket.on('stop-iframe-task', () => {
@@ -148,10 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(iframeTaskInterval);
             iframeTaskInterval = null;
         }
-        // This event might be broadcast. We only update the UI if we were actually running an iframe task.
-        // This helps prevent UI flicker if the server task was stopped but the browser task wasn't running.
-        const selectedMode = document.querySelector('input[name="mode"]:checked').value;
-        if (selectedMode === 'browser' || !stopBtn.disabled) {
+        // This event might be broadcast, so we only update UI if we were running an iframe task
+        if (document.querySelector('input[name="mode"]:checked').value === 'browser') {
             socket.emit('statusUpdate', { isRunning: false });
         }
     });

@@ -171,3 +171,37 @@ small {
     gap: 0.5rem;
     font-weight: 500;
 }
+/* ... (all previous styles) ... */
+
+/* ADD THESE NEW STYLES */
+hr {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 1.5rem 0;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.checkbox-group label {
+    margin-bottom: 0;
+    font-weight: 600;
+}
+
+.hidden {
+    display: none;
+}
+
+#clickOptions {
+    margin-top: 1rem;
+    padding-left: 1rem;
+    border-left: 3px solid #f0f0f0;
+}

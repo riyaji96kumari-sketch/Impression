@@ -130,8 +130,8 @@ io.on('connection', (socket) => {
         maxDelay: parseInt(data.maxDelay, 10),
       });
     } else if (data.mode === 'browser') {
-      // Orchestrate the temporary iframe task by passing all data to the client
-      // The server does not keep state for this mode.
+      // Orchestrate the temporary iframe task
+      // Note: This does not use the persistent backgroundTask state
       io.emit('log', `[${getTimestamp()}] BROWSER - Instructing client to start iframe simulation.`);
       io.emit('start-iframe-task', data);
     }
@@ -139,9 +139,9 @@ io.on('connection', (socket) => {
 
   socket.on('stop-traffic', () => {
     console.log('Received stop-traffic signal');
-    // The stop button stops both kinds of tasks for simplicity
-    stopBackgroundTask(); // Stops the server-side task
-    io.emit('stop-iframe-task'); // Commands clients to stop the browser-side task
+    // This button should stop BOTH kinds of tasks for simplicity
+    stopBackgroundTask();
+    io.emit('stop-iframe-task');
   });
   
   socket.on('client-log', (message) => {

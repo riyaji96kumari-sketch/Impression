@@ -1,3 +1,5 @@
+// script.js (Corrected)
+
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
@@ -19,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let iframeCounter = 0;
     let iframeTaskInterval = null;
 
-    // --- UI Logic ---
+    // --- UI Logic (no changes here) ---
     const updateModeUI = () => {
         const selectedMode = document.querySelector('input[name="mode"]:checked').value;
         if (selectedMode === 'browser') {
@@ -30,26 +32,22 @@ document.addEventListener('DOMContentLoaded', () => {
             modeDescription.textContent = 'Runs on the server using GET requests. Persists even if you close this tab.';
         }
     };
-
     modeRadios.forEach(radio => radio.addEventListener('change', updateModeUI));
-    updateModeUI(); // Initial call
+    updateModeUI();
 
-    // --- Event Listeners ---
+    // --- Event Listeners (no changes here) ---
     form.addEventListener('submit', (e) => {
         e.preventDefault();
-        
         logContainer.textContent = '';
         iframeGridContainer.innerHTML = '';
-        
         const selectedMode = document.querySelector('input[name="mode"]:checked').value;
-
         socket.emit('start-traffic', {
             mode: selectedMode,
             url: urlInput.value,
-            minDelay: minDelayInput.value,
-            maxDelay: maxDelayInput.value,
-            iframeCount: iframeCountInput.value,
-            closeDelay: closeDelayInput.value
+            minDelay: parseInt(minDelayInput.value, 10),
+            maxDelay: parseInt(maxDelayInput.value, 10),
+            iframeCount: parseInt(iframeCountInput.value, 10),
+            closeDelay: parseInt(closeDelayInput.value, 10)
         });
     });
 
@@ -57,13 +55,14 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('stop-traffic');
     });
 
-    // --- Socket Event Handlers ---
+    // --- Socket Event Handlers (CORRECTED) ---
     socket.on('log', (message) => {
         logContainer.textContent += message + '\n';
         logContainer.parentElement.scrollTop = logContainer.parentElement.scrollHeight;
     });
 
     socket.on('statusUpdate', ({ isRunning }) => {
+        // This is now the ONLY place the UI state is changed.
         const inputs = [urlInput, minDelayInput, maxDelayInput, iframeCountInput, closeDelayInput, ...modeRadios];
         startBtn.disabled = isRunning;
         stopBtn.disabled = !isRunning;
@@ -90,26 +89,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     socket.on('start-iframe-task', (data) => {
-        // Since the server doesn't keep state for this, the client must run the loop
-        iframeGridContainer.innerHTML = ''; // Clear previous
+        if (iframeTaskInterval) clearTimeout(iframeTaskInterval); // Clear any old loop
+        iframeGridContainer.innerHTML = '';
         const run = () => {
             createIframes(data);
             const delay = Math.floor(Math.random() * (data.maxDelay - data.minDelay + 1) + data.minDelay);
             iframeTaskInterval = setTimeout(run, delay);
         };
         run();
-        // Also update UI to reflect a running state
-        socket.emit('statusUpdate', { isRunning: true });
+        // THE FIX: REMOVED the incorrect socket.emit('statusUpdate', ...)
     });
 
     socket.on('stop-iframe-task', () => {
+        // THE FIX: This handler now ONLY stops the client's loop. It doesn't touch the UI state.
         if (iframeTaskInterval) {
             clearTimeout(iframeTaskInterval);
             iframeTaskInterval = null;
-        }
-        // This event might be broadcast, so we only update UI if we were running an iframe task
-        if (document.querySelector('input[name="mode"]:checked').value === 'browser') {
-            socket.emit('statusUpdate', { isRunning: false });
         }
     });
 });

@@ -11,7 +11,7 @@
         <h1>Hybrid Traffic Simulator</h1>
         
         <form id="controlForm">
-            <!-- Mode Selector is the same -->
+            <!-- NEW: Mode Selector -->
             <div class="form-group">
                 <label>Simulation Mode</label>
                 <div class="radio-group">
@@ -22,12 +22,19 @@
             </div>
 
             <div class="form-group">
-                <label for="url">Target URL (for Impression)</label>
-                <input type="url" id="url" placeholder="https://example.com/landing-page" value="https://httpbin.org/get" required>
+                <label for="url">Target URL</label>
+                <input type="url" id="url" placeholder="https://example.com" value="https://httpbin.org/get" required>
             </div>
             
             <div class="form-group-inline">
-                <!-- Interval inputs are the same -->
+                <div class="form-group">
+                    <label for="minDelay">Min Interval (ms)</label>
+                    <input type="number" id="minDelay" value="5000" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="maxDelay">Max Interval (ms)</label>
+                    <input type="number" id="maxDelay" value="10000" min="0" required>
+                </div>
             </div>
             
             <!-- Browser-mode specific inputs -->
@@ -38,26 +45,7 @@
                 </div>
                 <div class="form-group">
                     <label for="closeDelay">Close After (ms)</label>
-                    <input type="number" id="closeDelay" value="8000" min="100">
-                </div>
-            </div>
-
-            <!-- NEW: Click Simulation Inputs -->
-            <div id="clickSimulationInputs" style="display: none;">
-                <hr>
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="enableClicks">
-                    <label for="enableClicks">Simulate Clicks (via Navigation)</label>
-                </div>
-                <div id="clickOptions" class="hidden">
-                    <div class="form-group">
-                        <label for="clickUrl">Click Target URL (Navigate to)</label>
-                        <input type="url" id="clickUrl" placeholder="https://example.com/product-page" value="https://httpbin.org/get?source=click">
-                    </div>
-                    <div class="form-group">
-                        <label for="ctr">Click-Through Rate (CTR %)</label>
-                        <input type="number" id="ctr" value="10" min="0" max="100">
-                    </div>
+                    <input type="number" id="closeDelay" value="4000" min="100">
                 </div>
             </div>
 
@@ -67,11 +55,11 @@
             </div>
         </form>
 
-        <!-- Logs and iFrame Grid are the same -->
         <h2>Logs</h2>
         <div class="log-container-wrapper">
             <pre id="logContainer">Awaiting instructions...</pre>
         </div>
+
         <h2>Active Windows (Browser Mode Only)</h2>
         <div id="iframeGridContainer"></div>
     </div>
